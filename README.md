@@ -52,6 +52,9 @@ cd m347-minimal-api
 
 ````bash
 dotnet new web --name WebApi
+
+# Nuget-Package installieren
+dotnet add package MongoDB.Driver
 ````
 
 ## Dockerfile erstellen
@@ -88,59 +91,86 @@ version: '3'
 services:
   webapi:
     build:
-      context: ./WebApi
+      context: ./minimal-api-with-mongodb/WebApi
       dockerfile: Dockerfile
     ports:
       - 5001:80
+    depends_on:
+      - mongodb
+    environment:
+      - MoviesDatabaseSettings__ConnectionString=mongodb://gbs:geheim@mongodb:27017
+
+  mongodb:
+    image: mongo
+    restart: always
+    ports:
+      - 27017:27017
+    volumes:
+      - mongodb_data:/data/db
+
+volumes:
+  mongodb_data:
 ````
 
-## Index.php erstellen
+## Program.cs erstellen
 
 ````bash
-touch index.php
+touch Program.cs
 ````
 
 ... und folgenden Inhalt einfügen:
 
 ````html
-<!DOCTYPE html >
-<html >
-<head >
-<title >M347</title >
-<meta charset ="utf-8" />
-</head >
-<body >
-<h1>M347 - Webpage mit Dockefile</h1>
-<?php
-$vorname = "Damian";
-$nachname = "Blatt";
-echo "Autor: ${vorname} ${nachname}";
-?> 
-</body >
-</html >
+using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using MongoDB.Driver;
+using System;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// ...
+
+var app = builder.Build();
+
+// ...
+
+app.MapGet("/", () => {
+    return "Minimal API Version 1.0";
+});
+
+app.MapGet("/check", () =>
+{
+    try
+    {
+        var mongoClient = new MongoClient("mongodb://gbs:geheim@localhost:27017");
+        var databases = mongoClient.ListDatabases().ToList();
+
+        string response = "Zugriff auf MongoDB OK.\n\nDatenbanken:\n";
+        foreach (var db in databases)
+        {
+            response += $"{db["name"]}\n";
+        }
+
+        return response;
+    }
+    catch (Exception ex)
+    {
+        return $"Fehler beim Zugriff auf MongoDB: {ex.Message}";
+    }
+});
+
+app.Run();
 ````
 
-## Image erstellen
+##  Service starten
+
+Folgender Befehl muss im Verzeichnis ausgeführt werden, das die Datei docker-compose.yml enthält.
 
 ````bash
-docker build -t m347-dockerfile
-docker image ls
-````
-
-Nun sollten u. a. folgende Images aufgeführt werden:
-
-````
-REPOSITORY       TAG        IMAGE ID       CREATED              SIZE
-m347-dockefile   latest     c5a049e80c58   About a minute ago   458MB
-php              8-apache   af944036d594   About a minute ago	458MB
-````
-
-##  Container starten
-
-````bash
-docker run -d --name m347-dockerfile-container -p 8080:80 m347-dockefile
+docker-compose up
 ````
 
 ## Webpage aufrufen
 
-Die Webpage kann nun unter _localhost:8080_ aufgerufen werden.
+Die Webpage kann nun unter _localhost:5001_ aufgerufen werden.
